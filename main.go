@@ -10,6 +10,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/fantasyczl/full_text_search_demo/fts"
 )
 
 func main() {
@@ -30,9 +32,10 @@ func main() {
 		fmt.Println("load documents failed, ", err)
 		os.Exit(2)
 	}
-	diff := time.Now().Sub(startTime).Milliseconds()
-	fmt.Printf("load file:%s, count:%d, cost:%dms\n", path, len(docs), diff)
+	diff := time.Now().Sub(startTime).Microseconds()
+	fmt.Printf("load file:%s, count:%d, cost:%dus\n", path, len(docs), diff)
 
+	// search
 	matchList := []matchTerm{
 		matchTermContain,
 		matchTermRegexp,
@@ -41,16 +44,16 @@ func main() {
 		hitDocs := search(docs, *term, m)
 		printResult(hitDocs)
 	}
+
+	// build index
+	idx := fts.BuildIndex(docs)
+	startTime = time.Now()
+	docIds := idx.Search(*term)
+	diff = time.Now().Sub(startTime).Microseconds()
+	fmt.Println(docIds, "cost:", diff, "us")
 }
 
-type Document struct {
-	Title string `xml:"title"`
-	URL   string `xml:"url"`
-	Text  string `xml:"abstract"`
-	ID    int
-}
-
-func loadDucments(path string) ([]Document, error) {
+func loadDucments(path string) ([]fts.Document, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -60,7 +63,7 @@ func loadDucments(path string) ([]Document, error) {
 
 	dec := xml.NewDecoder(f)
 	dump := struct {
-		Documents []Document `xml:"doc"`
+		Documents []fts.Document `xml:"doc"`
 	}{}
 
 	if err := dec.Decode(&dump); err != nil {
@@ -75,15 +78,15 @@ func loadDucments(path string) ([]Document, error) {
 	return docs, nil
 }
 
-func search(docs []Document, term string, m matchTerm) []Document {
+func search(docs []fts.Document, term string, m matchTerm) []fts.Document {
 	startTime := time.Now()
 	defer func() {
-		ms := time.Now().Sub(startTime).Milliseconds()
+		ms := time.Now().Sub(startTime).Microseconds()
 		funName := runtime.FuncForPC(reflect.ValueOf(m).Pointer()).Name()
-		fmt.Printf("search, func:%s, cost:%dms\n", funName, ms)
+		fmt.Printf("search, func:%s, cost:%dus\n", funName, ms)
 	}()
 
-	r := make([]Document, 0, len(docs))
+	r := make([]fts.Document, 0, len(docs))
 	for _, doc := range docs {
 		if m(doc.Text, term) {
 			r = append(r, doc)
@@ -104,7 +107,7 @@ func matchTermRegexp(s string, term string) bool {
 	return re.MatchString(s)
 }
 
-func printResult(docs []Document) {
+func printResult(docs []fts.Document) {
 	fmt.Printf("hit results count:%d\n", len(docs))
 
 	for _, doc := range docs {
